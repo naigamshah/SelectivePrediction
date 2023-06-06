@@ -1,6 +1,9 @@
 import torch
+from torch.utils.data import Dataset
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
+
+RANDOM_SEED = 42
 
 class CombinedDataset(Dataset):
     def __init__(d):
@@ -23,21 +26,27 @@ class CombinedDataset(Dataset):
 
         return answer_length, len(inputs["input_ids"].squeeze())
 
+def load_data(src_prefix="squad", known_prefix="hotpot_qa", unknown_prefix="newsqa"):
+    p_src = load_dataset(src_prefix, split='train', streaming=True)
+    dataset1 = p_src.shuffle(seed=RANDOM_SEED, buffer_size=1600)
+    d1 = parse(dataset1)
 
-def load_data(src_prefix="squad", known_prefix="hotpot", unknown_prefix="news"):
+    q_known = load_dataset(known_prefix, "distractor", split='train', streaming=True)
+    dataset2 = q_known.shuffle(seed=RANDOM_SEED, buffer_size=400)
+    d2 = parse(dataset2)
 
-	p_src = load_dataset(src_prefix)
-	q_known = load_dataset(known_prefix)
-	q_unknown = load_dataset(unknown_prefix)
+    # q_unknown = load_dataset(unknown_prefix, streaming=True)
+    # dataset3 = q_unknown.shuffle(seed=RANDOM_SEED, buffer_size=4000)
 
-	combined_dataset = dataset1[:1600] + dataset2[:400] + dataset3[:4000]
-    import pdb; pdb.set_trace()
+    dataset = d1 + d2
 
-	model_name = "bert-base-cased"
+    model_name = "bert-base-cased"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForQuestionAnswering.from_pretrained(model_name)
 
-    data_loader = DataLoader(CombinedDataset(), batch_size=32, shuffle=True)
+    data_loader = DataLoader(CombinedDataset(dataset), batch_size=32, shuffle=True)
 
     return data_loader
+
+parse = lambda dataset: [{'question': example["question"], 'context': example["context"]} for example in dataset]
 
